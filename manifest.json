@@ -1,0 +1,20 @@
+{
+  "manifest_version": 3,
+  "name": "QA Test Case Generator",
+  "description": "Generate QA test cases from requirement text",
+  "version": "1.1",
+  "permissions": ["activeTab", "scripting", "contextMenus"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+  {
+    "matches": ["<all_urls>"],
+    "js": ["content.js"]
+  }
+]
+
+}
