@@ -1,3 +1,5 @@
+console.log("QA Extension content script loaded");
+
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === "generate") {
     const selectedText = request.text;
@@ -6,49 +8,47 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 });
 
-function generateNegativeTests(action){
-
+function generateNegativeTests(action) {
   return [
-
     {
       title: `Verify empty input for ${action}`,
       steps: `1. Attempt action without providing required input for: ${action}`,
-      expected: "System should show required field validation"
+      expected: "System should show required field validation",
     },
 
     {
       title: `Verify special characters handling for ${action}`,
       steps: `1. Perform action using special characters (!@#$%^&)`,
-      expected: "System should sanitize or reject invalid characters"
+      expected: "System should sanitize or reject invalid characters",
     },
 
     {
       title: `Verify max length validation for ${action}`,
       steps: `1. Perform ${action} using extremely long input`,
-      expected: "System should enforce max length restriction"
+      expected: "System should enforce max length restriction",
     },
 
     {
       title: `Verify unauthorized access for ${action}`,
       steps: `1. Attempt ${action} without proper authentication`,
-      expected: "System should block the action"
-    }
-
+      expected: "System should block the action",
+    },
   ];
 }
 
 //This breaks a paragraph into individual requirements.
 function extractActions(text) {
   const sentences = text
-    .split(/[.!?]/)
+    .split(/[.!?\n]/)
     .map((s) => s.trim())
     .filter((s) => s.length > 5);
+
 
   return sentences;
 }
 
 // This function creates a floating panel on the webpage to display generated test cases based on the selected text
-function createFloatingPanel(text) {
+async function createFloatingPanel(text) {
   const oldPanel = document.getElementById("qaTestPanel");
   if (oldPanel) oldPanel.remove();
 
@@ -60,32 +60,31 @@ function createFloatingPanel(text) {
 
   const testCases = [];
 
-actions.forEach(action => {
+  // actions.forEach(action => {
 
-  testCases.push({
-    title: `Verify successful scenario for ${action}`,
-    steps: `1. Open application\n2. Perform action: ${action}`,
-    expected: "System completes action successfully"
-  });
+  //   testCases.push({
+  //     title: `Verify successful scenario for ${action}`,
+  //     steps: `1. Open application\n2. Perform action: ${action}`,
+  //     expected: "System completes action successfully"
+  //   });
 
-  testCases.push({
-    title: `Verify invalid scenario for ${action}`,
-    steps: `1. Attempt invalid version of: ${action}`,
-    expected: "System shows validation error"
-  });
+  //   testCases.push({
+  //     title: `Verify invalid scenario for ${action}`,
+  //     steps: `1. Attempt invalid version of: ${action}`,
+  //     expected: "System shows validation error"
+  //   });
 
-  testCases.push({
-    title: `Verify edge case for ${action}`,
-    steps: `1. Perform boundary condition of: ${action}`,
-    expected: "System handles edge case correctly"
-  });
+  //   testCases.push({
+  //     title: `Verify edge case for ${action}`,
+  //     steps: `1. Perform boundary condition of: ${action}`,
+  //     expected: "System handles edge case correctly"
+  //   });
 
-  const negativeTests = generateNegativeTests(action);
+  //   const negativeTests = generateNegativeTests(action);
 
-  negativeTests.forEach(test => testCases.push(test));
+  //   negativeTests.forEach(test => testCases.push(test));
 
-});
-
+  // });
 
   const panel = document.createElement("div");
   panel.id = "qaTestPanel";
@@ -109,8 +108,7 @@ actions.forEach(action => {
   header.style.cursor = "move";
   header.style.fontWeight = "bold";
   header.style.marginBottom = "8px";
-header.textContent = `QA Test Case Generator (${testCases.length} cases)`;
-
+  header.textContent = `QA Test Case Generator (${testCases.length} cases)`;
 
   panel.appendChild(header);
 
@@ -132,7 +130,32 @@ header.textContent = `QA Test Case Generator (${testCases.length} cases)`;
   });
 
   const pre = document.createElement("pre");
-  pre.textContent = output;
+pre.textContent = "Generating AI test cases...";
+
+
+chrome.runtime.sendMessage(
+  {
+    action: "generateAI",
+    text: text
+  },
+  (response) => {
+
+    if (chrome.runtime.lastError) {
+      pre.textContent = "Extension connection error.";
+      console.error(chrome.runtime.lastError);
+      return;
+    }
+
+    if (!response || !response.output) {
+      pre.textContent = "AI returned no test cases.";
+      return;
+    }
+
+    pre.textContent = response.output;
+
+  }
+);
+
   pre.style.whiteSpace = "pre-wrap";
   pre.style.fontSize = "13px";
 
@@ -144,8 +167,9 @@ header.textContent = `QA Test Case Generator (${testCases.length} cases)`;
   copyBtn.style.marginRight = "10px";
 
   copyBtn.onclick = () => {
-    navigator.clipboard.writeText(output);
-  };
+  navigator.clipboard.writeText(pre.textContent);
+};
+
 
   panel.appendChild(copyBtn);
 
@@ -205,3 +229,6 @@ function makeDraggable(panel, header) {
     isDragging = false;
   };
 }
+
+// const aiOutput = await generateAITestCases(text);
+// pre.textContent = aiOutput;
