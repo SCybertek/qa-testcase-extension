@@ -44,6 +44,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === "generateAI") {
 
     console.log("Received AI request:", request.text);
+    const generationOptions = request.options || {};
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
@@ -54,7 +55,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        requirement: request.text
+        requirement: request.text,
+        options: generationOptions,
+        deterministic: generationOptions.deterministic === true,
+        desiredCount: generationOptions.desiredCount,
+        outputFormat: generationOptions.outputFormat || "structured-text-v1",
       }),
       signal: controller.signal
     })
