@@ -35,15 +35,11 @@ function countTestCasesFromOutput(output) {
   }
 
   const candidates = [
-    (output.match(/^\s*(?:[#>*-]\s*)*test\s*case\s*[:#-]?\s*\d+/gim) || [])
-      .length,
+    (output.match(/^\s*(?:[#>*-]\s*)*test\s*case\s*[:#-]?\s*\d+/gim) || []).length,
     (output.match(/^\s*(?:[#>*-]\s*)*case\s*[:#-]?\s*\d+/gim) || []).length,
     (output.match(/^\s*(?:[#>*-]\s*)*tc[\s:#-]*\d+/gim) || []).length,
     (output.match(/^\s*title\s*:/gim) || []).length,
-    (
-      output.match(/^\s*\d+[.)-]\s*(test\s*case|scenario|use\s*case)\b/gim) ||
-      []
-    ).length,
+    (output.match(/^\s*\d+[.)-]\s*(test\s*case|scenario|use\s*case)\b/gim) || []).length,
   ];
 
   return Math.max(...candidates, 0);
@@ -60,10 +56,7 @@ const AI_CACHE_LIMIT = 25;
 
 // Normalize similar prompts to one cache key.
 function buildCacheKey(input) {
-  return String(input || "")
-    .toLowerCase()
-    .replace(/\s+/g, " ")
-    .trim();
+  return String(input || "").toLowerCase().replace(/\s+/g, " ").trim();
 }
 
 // Read cached AI output for the current normalized prompt.
@@ -76,10 +69,7 @@ function getCachedAiOutput(cacheKey) {
 
     chrome.storage.local.get([AI_CACHE_STORAGE_KEY], (result) => {
       if (chrome.runtime.lastError) {
-        console.warn(
-          "[QA Extension] Failed to read AI cache:",
-          chrome.runtime.lastError.message,
-        );
+        console.warn("[QA Extension] Failed to read AI cache:", chrome.runtime.lastError.message);
         resolve(null);
         return;
       }
@@ -100,10 +90,7 @@ function saveCachedAiOutput(cacheKey, output, count) {
 
     chrome.storage.local.get([AI_CACHE_STORAGE_KEY], (result) => {
       if (chrome.runtime.lastError) {
-        console.warn(
-          "[QA Extension] Failed to read cache before save:",
-          chrome.runtime.lastError.message,
-        );
+        console.warn("[QA Extension] Failed to read cache before save:", chrome.runtime.lastError.message);
         resolve(false);
         return;
       }
@@ -132,10 +119,7 @@ function saveCachedAiOutput(cacheKey, output, count) {
 
       chrome.storage.local.set({ [AI_CACHE_STORAGE_KEY]: trimmedCache }, () => {
         if (chrome.runtime.lastError) {
-          console.warn(
-            "[QA Extension] Failed to save AI cache:",
-            chrome.runtime.lastError.message,
-          );
+          console.warn("[QA Extension] Failed to save AI cache:", chrome.runtime.lastError.message);
           resolve(false);
           return;
         }
@@ -156,10 +140,7 @@ function clearCachedAiOutputs() {
 
     chrome.storage.local.remove([AI_CACHE_STORAGE_KEY], () => {
       if (chrome.runtime.lastError) {
-        console.warn(
-          "[QA Extension] Failed to clear AI cache:",
-          chrome.runtime.lastError.message,
-        );
+        console.warn("[QA Extension] Failed to clear AI cache:", chrome.runtime.lastError.message);
         resolve(false);
         return;
       }
@@ -176,8 +157,9 @@ function generateLocalTestCases(actions) {
     .filter(Boolean)
     .slice(0, 5);
 
-  const safeActions =
-    normalizedActions.length > 0 ? normalizedActions : ["selected requirement"];
+  const safeActions = normalizedActions.length > 0
+    ? normalizedActions
+    : ["selected requirement"];
 
   const testCases = [];
 
@@ -233,11 +215,7 @@ function normalizeDesiredCaseCount(value) {
 }
 
 // Build a stricter prompt to improve output consistency.
-function buildAiRequestPrompt(
-  requirementText,
-  desiredCaseCount,
-  deterministic,
-) {
+function buildAiRequestPrompt(requirementText, desiredCaseCount, deterministic) {
   const modeLine = deterministic
     ? "Use deterministic, consistent wording and ordering."
     : "Use clear and concise wording.";
@@ -357,19 +335,13 @@ async function createFloatingPanel(text) {
     const desiredCaseCount = normalizeDesiredCaseCount(desiredCountInput.value);
     desiredCountInput.value = String(desiredCaseCount);
 
-    const aiPrompt = buildAiRequestPrompt(
-      basePromptText,
-      desiredCaseCount,
-      deterministicMode,
-    );
+    const aiPrompt = buildAiRequestPrompt(basePromptText, desiredCaseCount, deterministicMode);
     const cacheKey = buildCacheKey(
-      `${basePromptText}::deterministic=${deterministicMode}::count=${desiredCaseCount}`,
+      `${basePromptText}::deterministic=${deterministicMode}::count=${desiredCaseCount}`
     );
 
     const useLocalFallback = (reason) => {
-      const fallbackCases = generateLocalTestCases(
-        actions.length > 0 ? actions : [trimmedText],
-      );
+      const fallbackCases = generateLocalTestCases(actions.length > 0 ? actions : [trimmedText]);
       const fallbackCount = fallbackCases.length;
 
       latestOutput = formatTestCases(fallbackCases);
@@ -377,12 +349,8 @@ async function createFloatingPanel(text) {
       countLabel.textContent = `AI unavailable. Generated ${fallbackCount} local test case(s)`;
       headerTitle.textContent = `QA Test Case Generator (${fallbackCount} cases)`;
 
-      console.warn(
-        `[QA Extension] AI unavailable: ${reason}. Using local fallback generator.`,
-      );
-      console.log(
-        `[QA Extension] Local fallback generated ${fallbackCount} test case(s).`,
-      );
+      console.warn(`[QA Extension] AI unavailable: ${reason}. Using local fallback generator.`);
+      console.log(`[QA Extension] Local fallback generated ${fallbackCount} test case(s).`);
     };
 
     const useCachedFallback = async (reason) => {
@@ -395,19 +363,15 @@ async function createFloatingPanel(text) {
         const inferredCachedCount = countTestCasesFromOutput(latestOutput);
         const cachedCount = Math.max(
           Number.isFinite(cachedCountValue) ? cachedCountValue : 0,
-          inferredCachedCount,
+          inferredCachedCount
         );
 
         pre.textContent = latestOutput;
         countLabel.textContent = `AI unavailable. Loaded ${cachedCount} cached test case(s)`;
         headerTitle.textContent = `QA Test Case Generator (${cachedCount} cases)`;
 
-        console.warn(
-          `[QA Extension] AI unavailable: ${reason}. Using cached AI test cases.`,
-        );
-        console.log(
-          `[QA Extension] Cached fallback loaded ${cachedCount} test case(s).`,
-        );
+        console.warn(`[QA Extension] AI unavailable: ${reason}. Using cached AI test cases.`);
+        console.log(`[QA Extension] Cached fallback loaded ${cachedCount} test case(s).`);
         return true;
       }
 
@@ -415,22 +379,19 @@ async function createFloatingPanel(text) {
     };
 
     if (deterministicMode) {
-      countLabel.textContent =
-        "Deterministic mode active. Checking pinned output...";
+      countLabel.textContent = "Deterministic mode active. Checking pinned output...";
       const pinned = await getCachedAiOutput(cacheKey);
       if (pinned?.output) {
         latestOutput = pinned.output;
         const pinnedCount = Math.max(
           Number.isFinite(Number(pinned.count)) ? Number(pinned.count) : 0,
-          countTestCasesFromOutput(latestOutput),
+          countTestCasesFromOutput(latestOutput)
         );
 
         pre.textContent = latestOutput;
         countLabel.textContent = `Deterministic mode: loaded ${pinnedCount} cached test case(s)`;
         headerTitle.textContent = `QA Test Case Generator (${pinnedCount} cases)`;
-        console.log(
-          `[QA Extension] Deterministic cache hit: ${pinnedCount} case(s).`,
-        );
+        console.log(`[QA Extension] Deterministic cache hit: ${pinnedCount} case(s).`);
         return;
       }
     }
@@ -453,13 +414,11 @@ async function createFloatingPanel(text) {
       (response) => {
         if (chrome.runtime.lastError) {
           console.error(chrome.runtime.lastError);
-          void useCachedFallback("extension connection error").then(
-            (cacheUsed) => {
-              if (!cacheUsed) {
-                useLocalFallback("extension connection error");
-              }
-            },
-          );
+          void useCachedFallback("extension connection error").then((cacheUsed) => {
+            if (!cacheUsed) {
+              useLocalFallback("extension connection error");
+            }
+          });
           return;
         }
 
@@ -470,13 +429,11 @@ async function createFloatingPanel(text) {
           /^\s*AI request failed:/i.test(response.output);
 
         if (aiFailed) {
-          void useCachedFallback(response?.error || "AI request failed").then(
-            (cacheUsed) => {
-              if (!cacheUsed) {
-                useLocalFallback(response?.error || "AI request failed");
-              }
-            },
-          );
+          void useCachedFallback(response?.error || "AI request failed").then((cacheUsed) => {
+            if (!cacheUsed) {
+              useLocalFallback(response?.error || "AI request failed");
+            }
+          });
           return;
         }
 
@@ -485,7 +442,7 @@ async function createFloatingPanel(text) {
         const inferredCount = countTestCasesFromOutput(latestOutput);
         const caseCount = Math.max(
           Number.isFinite(responseCountValue) ? responseCountValue : 0,
-          inferredCount,
+          inferredCount
         );
 
         if (caseCount > 0) {
@@ -494,23 +451,18 @@ async function createFloatingPanel(text) {
             : `AI generated ${caseCount} test case(s)`;
           headerTitle.textContent = `QA Test Case Generator (${caseCount} cases)`;
         } else {
-          countLabel.textContent =
-            "AI generated test cases (count unavailable)";
+          countLabel.textContent = "AI generated test cases (count unavailable)";
         }
 
         console.log(`[QA Extension] AI generated ${caseCount} test case(s).`);
         pre.textContent = latestOutput;
 
-        void saveCachedAiOutput(cacheKey, latestOutput, caseCount).then(
-          (saved) => {
-            if (saved) {
-              console.log(
-                "[QA Extension] Cached AI result for offline fallback.",
-              );
-            }
-          },
-        );
-      },
+        void saveCachedAiOutput(cacheKey, latestOutput, caseCount).then((saved) => {
+          if (saved) {
+            console.log("[QA Extension] Cached AI result for offline fallback.");
+          }
+        });
+      }
     );
   };
 
