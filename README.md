@@ -91,4 +91,4 @@ Health check:
 
 ## License
 
-Proprietary licence template is included in [LICENSE.md](LICENSE.md)
+Proprietary licence template is included in [LICENSE](LICENSE)
