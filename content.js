@@ -47,7 +47,8 @@ function countTestCasesFromOutput(output) {
 
 // Escape cell values safely for CSV downloads.
 function toCsvSafeValue(value) {
-  return `"${value.replace(/"/g, '""')}"`;
+  const normalized = value == null ? "" : String(value);
+  return `"${normalized.replace(/"/g, '""')}"`;
 }
 
 // Cache settings for offline fallback reuse.
@@ -207,6 +208,137 @@ function formatTestCases(testCases) {
     .join("\n\n");
 }
 
+// Normalize and infer priority values for CSV export.
+function normalizePriority(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (normalized === "high") return "High";
+  if (normalized === "medium") return "Medium";
+  if (normalized === "low") return "Low";
+  return "";
+}
+
+function inferPriorityFromCase(testCase) {
+  const source = [
+    testCase.title,
+    testCase.preconditions,
+    testCase.steps,
+    testCase.expected,
+    testCase.testData,
+  ]
+    .join(" ")
+    .toLowerCase();
+
+  const highSignals = /(unauthori[sz]ed|permission|access\s+control|security|data\s+loss|fraud|payment\s+failure|compliance|critical|outage|lockout|locked|expire|expired|token|auth(?:enti|or)?|session|password\s*reset|admin|privilege|encrypt|sensitive)/i;
+  const mediumSignals = /(validation|boundary|limit|max|min|invalid|error|timeout|retry|duplicate|idempotent|concurrency|format|missing|empty)/i;
+
+  if (highSignals.test(source)) return "High";
+  if (mediumSignals.test(source)) return "Medium";
+  return "Low";
+}
+
+// Parse AI/plain-text output into structured fields for export.
+function parseStructuredTestCases(sourceText) {
+  const text = String(sourceText || "").trim();
+  if (!text) return [];
+
+  const blocks = text
+    .split(/\n\s*\n+/)
+    .map((block) => block.trim())
+    .filter(Boolean);
+
+  return blocks
+    .map((block, index) => {
+      const lines = block.split("\n").map((line) => line.trim());
+      const parsed = {
+        caseNumber: index + 1,
+        title: "",
+        preconditions: "",
+        priority: "",
+        steps: "",
+        expected: "",
+        testData: "",
+      };
+
+      const stepLines = [];
+      let inSteps = false;
+
+      lines.forEach((line) => {
+        if (!line) return;
+
+        const caseNumberMatch = line.match(/^test\s*case\s*[:#-]?\s*(\d+)/i);
+        if (caseNumberMatch) {
+          parsed.caseNumber = Number(caseNumberMatch[1]) || parsed.caseNumber;
+          inSteps = false;
+          return;
+        }
+
+        const titleMatch = line.match(/^title\s*:\s*(.+)$/i);
+        if (titleMatch) {
+          parsed.title = titleMatch[1].trim();
+          inSteps = false;
+          return;
+        }
+
+        const preconditionsMatch = line.match(/^preconditions\s*:\s*(.+)$/i);
+        if (preconditionsMatch) {
+          parsed.preconditions = preconditionsMatch[1].trim();
+          inSteps = false;
+          return;
+        }
+
+        const priorityMatch = line.match(/^priority\s*:\s*(.+)$/i);
+        if (priorityMatch) {
+          parsed.priority = normalizePriority(priorityMatch[1]);
+          inSteps = false;
+          return;
+        }
+
+        const testDataMatch = line.match(/^test\s*data\s*:\s*(.+)$/i);
+        if (testDataMatch) {
+          const value = testDataMatch[1].trim();
+          parsed.testData = value; // preserve literal values (including N/A) from AI output
+          inSteps = false;
+          return;
+        }
+
+        const expectedMatch = line.match(/^expected\s*:\s*(.+)$/i);
+        if (expectedMatch) {
+          parsed.expected = expectedMatch[1].trim();
+          inSteps = false;
+          return;
+        }
+
+        if (/^steps\s*:?$/i.test(line)) {
+          inSteps = true;
+          return;
+        }
+
+        if (inSteps) {
+          stepLines.push(line.replace(/^\d+[.)-]\s*/, "").trim());
+        }
+      });
+
+      if (stepLines.length > 0) {
+        parsed.steps = stepLines
+          .filter(Boolean)
+          .map((step, stepIndex) => `${stepIndex + 1}. ${step}`)
+          .join("\n");
+      }
+
+      if (!parsed.priority) {
+        parsed.priority = inferPriorityFromCase(parsed);
+      }
+
+      // Ensure Test Data column is explicit when not provided
+      if (!parsed.testData) {
+        parsed.testData = "N/A";
+      }
+
+      return parsed;
+    })
+    .filter((testCase) => testCase.title || testCase.steps || testCase.expected);
+}
+
 // Clamp desired count to a safe range for generation requests.
 function normalizeDesiredCaseCount(value) {
   const numeric = Number(value);
@@ -220,20 +352,27 @@ function buildAiRequestPrompt(requirementText, desiredCaseCount, deterministic) 
     ? "Use deterministic, consistent wording and ordering."
     : "Use clear and concise wording.";
 
+  const edgeCaseTarget = Math.max(1, Math.ceil(desiredCaseCount * 0.3));
+
   return [
     requirementText,
     "",
     `Generate exactly ${desiredCaseCount} QA test case(s).`,
+    `Include at least ${edgeCaseTarget} edge case(s) that cover boundary values, invalid/missing inputs, authorization, and unusual user flow sequencing where applicable.`,
     modeLine,
     "Output must be plain text only. No markdown headings, no bullet symbols, no intro text.",
+    "Set Priority for every case using only: High, Medium, or Low.",
+    "Use Test Data: N/A when no concrete test data is needed.",
     "Use this exact template for every case:",
     "Test Case <number>",
     "Title: <text>",
     "Preconditions: <text>",
+    "Priority: <High|Medium|Low>",
     "Steps:",
     "1. <step>",
     "2. <step>",
     "Expected: <text>",
+    "Test Data: <text or N/A>",
   ].join("\n");
 }
 
@@ -519,18 +658,47 @@ async function createFloatingPanel(text) {
     const sourceText = (latestOutput || pre.textContent || "").trim();
     if (!sourceText) return;
 
-    const blocks = sourceText
-      .split(/\n\s*\n+/)
-      .map((block) => block.trim())
-      .filter(Boolean);
+    const parsedCases = parseStructuredTestCases(sourceText);
+    const exportStamp = new Date().toISOString().replace(/[-:.TZ]/g, "").slice(0, 14);
 
-    let csv = "Test Case\n";
-    blocks.forEach((block) => {
-      csv += `${toCsvSafeValue(block.replace(/\n/g, " "))}\n`;
-    });
+    let csv = [
+      "Test Case ID",
+      "Priority",
+      "Title",
+      "Preconditions",
+      "Steps",
+      "Expected Result",
+      "Test Data",
+    ].join(",") + "\n";
 
-    if (blocks.length === 0) {
-      csv += `${toCsvSafeValue(sourceText.replace(/\n/g, " "))}\n`;
+    if (parsedCases.length > 0) {
+      parsedCases.forEach((testCase, index) => {
+        const testCaseId = `TC-${exportStamp}-${String(index + 1).padStart(3, "0")}`;
+
+        const row = [
+          testCaseId,
+          testCase.priority || "Medium",
+          testCase.title,
+          testCase.preconditions,
+          testCase.steps,
+          testCase.expected,
+          testCase.testData || "N/A",
+        ];
+
+        csv += `${row.map((value) => toCsvSafeValue(value)).join(",")}\n`;
+      });
+    } else {
+      const fallbackId = `TC-${exportStamp}-001`;
+      const row = [
+        fallbackId,
+        "Medium",
+        "Unparsed Test Case",
+        "",
+        sourceText,
+        "",
+        "",
+      ];
+      csv += `${row.map((value) => toCsvSafeValue(value)).join(",")}\n`;
     }
 
     const blob = new Blob([csv], { type: "text/csv" });
